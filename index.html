@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Williams College Makerspace Projects</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="background-overlay"></div>
+    
+    <header class="main-header">
+        <h1>Williams College Makerspace Student Projects</h1>
+    </header>
+
+    <main class="projects-container">
+        <div id="projects-grid" class="projects-grid">
+            <!-- Projects will be loaded dynamically -->
+        </div>
+    </main>
+
+    <div class="loading-indicator" id="loading">
+        <div class="spinner"></div>
+        <p>Loading Projects...</p>
+    </div>
+
+    <!-- Yellow progress strip at bottom of screen -->
+    <div class="bottom-progress-bar" id="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+    </div>
+
+    <!-- Project counter in top right corner -->
+    <div class="project-counter-overlay">
+        <span class="project-counter" id="project-counter">1 / 5</span>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
