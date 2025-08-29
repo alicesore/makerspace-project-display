@@ -24,7 +24,7 @@ const CONFIG = {
   },
     // Tag filtering configuration
   tagFilter: {
-    enabled: true, // Set to false to disable tag filtering
+    enabled: false, // Temporarily disabled to debug CI issues
     mode: 'any', // 'any' = at least one tag, 'all' = all tags required
     requiredTags: ['makerspace'] // Tags that must be present
   },
@@ -54,34 +54,55 @@ class MakerspaceScraper {
     };
   }
 
-  // Initialize browser
-  async init() {
+    // Initialize browser for scraping
+  async initBrowser() {
     try {
       log.info('Initializing browser...');
+      
+      // Enhanced browser args for CI environments
+      const browserArgs = [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--disable-gpu',
+        '--window-size=1920x1080',
+        '--disable-web-security',
+        '--disable-extensions',
+        '--disable-plugins',
+        '--disable-images',
+        '--disable-javascript-harmony-shipping',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding'
+      ];
+
+      // Additional args for CI environment
+      if (process.env.CI) {
+        browserArgs.push(
+          '--single-process',
+          '--no-zygote',
+          '--disable-background-networking'
+        );
+      }
+
       this.browser = await puppeteer.launch({
         headless: true,
-        args: [
-          '--no-sandbox', 
-          '--disable-setuid-sandbox', // For GitHub Actions
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor'
-        ]
+        args: browserArgs,
+        timeout: 60000
       });
+      
       this.page = await this.browser.newPage();
       
-      // Disable cache to ensure fresh content
+      // Disable cache for fresh data on each run
       await this.page.setCacheEnabled(false);
       
-      // Set user agent
-      await this.page.setUserAgent('Mozilla/5.0 (compatible; MakerspaceBot/1.0)');
+      // Set a realistic user agent
+      await this.page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
       
-      // Set viewport
-      await this.page.setViewport({ width: 1280, height: 720 });
-      
-      // Disable images and CSS to speed up scraping (optional)
+      // Block unnecessary resources to speed up scraping
       await this.page.setRequestInterception(true);
       this.page.on('request', (req) => {
-        // Allow HTML and text, block images and stylesheets for faster loading
         if(req.resourceType() == 'stylesheet' || req.resourceType() == 'image'){
           req.abort();
         } else {
@@ -583,6 +604,8 @@ class MakerspaceScraper {
   async scrape() {
     try {
       log.info('Starting scraping process...');
+      log.info(`Environment: ${process.env.CI ? 'CI' : 'Local'}`);
+      log.info(`Node version: ${process.version}`);
 
       // Log tag filtering configuration
       if (CONFIG.tagFilter.enabled) {
@@ -592,7 +615,20 @@ class MakerspaceScraper {
       }
 
       // Initialize browser
-      await this.init();
+      await this.initBrowser();
+      
+      // Test connectivity first
+      log.info('Testing browser connectivity...');
+      try {
+        await this.page.goto('https://www.google.com', { 
+          waitUntil: 'networkidle0', 
+          timeout: 30000 
+        });
+        log.info('✓ Browser connectivity test successful');
+      } catch (error) {
+        log.error(`✗ Browser connectivity test failed: ${error.message}`);
+        throw new Error('Browser connectivity issues detected');
+      }
 
       // Discover projects
       const projectUrls = await this.discoverProjects();
