@@ -74,7 +74,11 @@ class MakerspaceScraper {
         '--disable-javascript-harmony-shipping',
         '--disable-background-timer-throttling',
         '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding'
+        '--disable-renderer-backgrounding',
+        // Additional args to avoid Cloudflare detection
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=VizDisplayCompositor',
+        '--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       ];
 
       // Additional args for CI environment
@@ -97,8 +101,24 @@ class MakerspaceScraper {
       // Disable cache for fresh data on each run
       await this.page.setCacheEnabled(false);
       
-      // Set a realistic user agent
+      // Set realistic headers to avoid bot detection
       await this.page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+      
+      await this.page.setExtraHTTPHeaders({
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+      });
+
+      // Remove webdriver property
+      await this.page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', {
+          get: () => undefined,
+        });
+      });
       
       // Block unnecessary resources to speed up scraping
       await this.page.setRequestInterception(true);
@@ -155,8 +175,8 @@ class MakerspaceScraper {
           }
 
           // Get page content
-          const content = await this.page.content();
-          const $ = cheerio.load(content);
+          let content = await this.page.content();
+          let $ = cheerio.load(content);
 
           // Debug: Log page structure for CI debugging
           if (process.env.CI === 'true') {
@@ -183,12 +203,50 @@ class MakerspaceScraper {
             // If it looks like an error page, log more details
             if (titleElement.toLowerCase().includes('error') || 
                 titleElement.toLowerCase().includes('not found') ||
+                titleElement.toLowerCase().includes('just a moment') ||
+                titleElement.toLowerCase().includes('checking') ||
                 h1Text.toLowerCase().includes('error') ||
-                h1Text.toLowerCase().includes('not found')) {
-              log.warn(`Page ${currentPage} appears to be an error page!`);
+                h1Text.toLowerCase().includes('not found') ||
+                h1Text.includes('sites.williams.edu')) {
+              log.warn(`Page ${currentPage} appears to be an error/protection page!`);
               // Log first 500 chars of content for debugging
               const snippet = content.substring(0, 500).replace(/\s+/g, ' ').trim();
               log.warn(`Page ${currentPage} content snippet: ${snippet}...`);
+              
+              // If this looks like Cloudflare protection, wait longer and try to bypass
+              if (titleElement.toLowerCase().includes('just a moment') || 
+                  h1Text.includes('sites.williams.edu')) {
+                log.warn(`Cloudflare protection detected on page ${currentPage}! Waiting 10 seconds and retrying...`);
+                
+                try {
+                  // Wait for Cloudflare check to complete
+                  await new Promise(resolve => setTimeout(resolve, 10000));
+                  
+                  // Try to wait for the real content to load
+                  await this.page.waitForSelector('.fl-post-feed-post, article, .post', { 
+                    timeout: 30000 
+                  }).catch(() => {
+                    log.warn(`Still no content after Cloudflare wait on page ${currentPage}`);
+                  });
+                  
+                  // Re-get the content after waiting
+                  const newContent = await this.page.content();
+                  const new$ = cheerio.load(newContent);
+                  const newTitle = new$('title').text() || 'no-title-after-wait';
+                  
+                  if (!newTitle.toLowerCase().includes('just a moment')) {
+                    log.info(`Cloudflare bypass successful on page ${currentPage}! New title: ${newTitle}`);
+                    // Update our content variables
+                    content = newContent;
+                    $ = new$;
+                  } else {
+                    log.error(`Cloudflare bypass failed on page ${currentPage} - still getting protection screen`);
+                  }
+                  
+                } catch (error) {
+                  log.error(`Error during Cloudflare bypass on page ${currentPage}: ${error.message}`);
+                }
+              }
             }
           }
 
