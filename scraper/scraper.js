@@ -18,9 +18,9 @@ const CONFIG = {
   isCI: process.env.CI === 'true', // GitHub Actions sets CI=true
   maxProjects: process.env.NODE_ENV === 'development' ? 5 : null, // Limit for testing
   delays: {
-    // Faster in CI/production, slower for development
-    betweenPages: process.env.CI === 'true' ? 1000 : 2000,
-    betweenProjects: process.env.CI === 'true' ? 500 : 1000
+    // Slower in CI to avoid rate limiting, faster for local development
+    betweenPages: process.env.CI === 'true' ? 3000 : 1000,
+    betweenProjects: process.env.CI === 'true' ? 2000 : 500
   },
     // Tag filtering configuration
   tagFilter: {
@@ -135,13 +135,24 @@ class MakerspaceScraper {
         log.info(`Scraping page ${currentPage}: ${pageUrl}`);
         
         try {
+          // Longer timeout and wait for CI environments
+          const timeout = process.env.CI === 'true' ? 60000 : 30000;
+          
+          log.info(`Navigating to page ${currentPage} with ${timeout}ms timeout...`);
           await this.page.goto(pageUrl, { 
             waitUntil: 'networkidle2',
-            timeout: 30000 
+            timeout: timeout
           });
 
-          // Wait for content to load
-          await this.page.waitForSelector('body', { timeout: 10000 });
+          // Wait for content to load with longer timeout in CI
+          const selectorTimeout = process.env.CI === 'true' ? 20000 : 10000;
+          await this.page.waitForSelector('body', { timeout: selectorTimeout });
+          
+          // Additional wait in CI to ensure content is fully loaded
+          if (process.env.CI === 'true') {
+            log.info(`CI environment - adding extra 2s wait for page ${currentPage} to fully load...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
 
           // Get page content
           const content = await this.page.content();
@@ -247,7 +258,9 @@ class MakerspaceScraper {
             currentPage++;
             
             // Add delay between pages to be respectful
-            await new Promise(resolve => setTimeout(resolve, CONFIG.delays.betweenPages));
+            const delay = CONFIG.delays.betweenPages;
+            log.info(`Waiting ${delay}ms before loading page ${currentPage}...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
           } else {
             log.info(`No more pages found after page ${currentPage}`);
           }
