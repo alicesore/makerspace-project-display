@@ -429,8 +429,44 @@ class MakerspaceScraper {
         timeout: 30000 
       });
 
-      const content = await this.page.content();
-      const $ = cheerio.load(content);
+      let content = await this.page.content();
+      let $ = cheerio.load(content);
+      
+      // Check for Cloudflare protection on individual project pages
+      const titleElement = $('title').text() || '';
+      const h1Text = $('h1').first().text().trim() || '';
+      
+      if (titleElement.toLowerCase().includes('just a moment') || 
+          h1Text.includes('sites.williams.edu')) {
+        log.warn(`Cloudflare protection detected on project page: ${url}`);
+        log.warn(`Waiting 10 seconds and retrying...`);
+        
+        try {
+          // Wait for Cloudflare check to complete
+          await new Promise(resolve => setTimeout(resolve, 10000));
+          
+          // Try to wait for the real content to load
+          await this.page.waitForSelector('.entry-content, .post-content, .content', { 
+            timeout: 30000 
+          }).catch(() => {
+            log.warn(`Still no content after Cloudflare wait on project: ${url}`);
+          });
+          
+          // Re-get the content after waiting
+          content = await this.page.content();
+          $ = cheerio.load(content);
+          const newTitle = $('title').text() || '';
+          
+          if (!newTitle.toLowerCase().includes('just a moment')) {
+            log.info(`Cloudflare bypass successful for project: ${url}`);
+          } else {
+            log.error(`Cloudflare bypass failed for project: ${url} - still getting protection screen`);
+          }
+          
+        } catch (error) {
+          log.error(`Error during Cloudflare bypass on project ${url}: ${error.message}`);
+        }
+      }
 
       // TODO: Update these selectors based on actual site structure
       const project = {
