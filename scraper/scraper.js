@@ -127,14 +127,10 @@ class MakerspaceScraper {
       let hasMorePages = true;
       
       while (hasMorePages) {
-        // Construct URL for current page with cache busting
-        const basePageUrl = currentPage === 1 
+        // Construct URL for current page
+        const pageUrl = currentPage === 1 
           ? CONFIG.baseUrl 
           : `${CONFIG.baseUrl}page/${currentPage}/`;
-        
-        // Add cache-busting parameter
-        const cacheBuster = Date.now();
-        const pageUrl = `${basePageUrl}${basePageUrl.includes('?') ? '&' : '?'}cb=${cacheBuster}`;
         
         log.info(`Scraping page ${currentPage}: ${pageUrl}`);
         
@@ -296,11 +292,7 @@ class MakerspaceScraper {
     try {
       log.info(`Scraping project: ${url}`);
       
-      // Add cache busting to individual project URLs
-      const cacheBuster = Date.now();
-      const urlWithCacheBuster = `${url}${url.includes('?') ? '&' : '?'}cb=${cacheBuster}`;
-      
-      await this.page.goto(urlWithCacheBuster, { 
+      await this.page.goto(url, { 
         waitUntil: 'networkidle2',
         timeout: 30000 
       });
