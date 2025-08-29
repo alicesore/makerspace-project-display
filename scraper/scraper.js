@@ -158,6 +158,40 @@ class MakerspaceScraper {
           const content = await this.page.content();
           const $ = cheerio.load(content);
 
+          // Debug: Log page structure for CI debugging
+          if (process.env.CI === 'true') {
+            const bodyClasses = $('body').attr('class') || 'no-body-classes';
+            const titleElement = $('title').text() || 'no-title';
+            const h1Text = $('h1').first().text().trim() || 'no-h1';
+            
+            log.info(`Page ${currentPage} debug - Title: "${titleElement}"`);
+            log.info(`Page ${currentPage} debug - H1: "${h1Text}"`);
+            log.info(`Page ${currentPage} debug - Body classes: ${bodyClasses}`);
+            
+            // Check for common WordPress/page builder elements
+            const wpElements = {
+              'fl-post-feed-post': $('.fl-post-feed-post').length,
+              'article': $('article').length,
+              'post': $('.post').length,
+              'entry': $('.entry').length,
+              'project-links': $('a[href*="projects/"]').length,
+              'total-links': $('a').length
+            };
+            
+            log.info(`Page ${currentPage} debug - Elements found:`, JSON.stringify(wpElements));
+            
+            // If it looks like an error page, log more details
+            if (titleElement.toLowerCase().includes('error') || 
+                titleElement.toLowerCase().includes('not found') ||
+                h1Text.toLowerCase().includes('error') ||
+                h1Text.toLowerCase().includes('not found')) {
+              log.warn(`Page ${currentPage} appears to be an error page!`);
+              // Log first 500 chars of content for debugging
+              const snippet = content.substring(0, 500).replace(/\s+/g, ' ').trim();
+              log.warn(`Page ${currentPage} content snippet: ${snippet}...`);
+            }
+          }
+
           // Extract project URLs from this page
           const pageProjectUrls = [];
           
@@ -195,21 +229,48 @@ class MakerspaceScraper {
           
           // Fallback for this page if no fl-post-feed-post found
           if (pageProjectUrls.length === 0) {
-            log.warn(`No projects found in .fl-post-feed-post on page ${currentPage}, trying fallback...`);
+            log.warn(`No projects found in .fl-post-feed-post on page ${currentPage}, trying comprehensive fallbacks...`);
             
-            $('a[href*="projects/"]').each((i, el) => {
-              const href = $(el).attr('href');
-              const text = $(el).text().trim();
+            // Try multiple fallback strategies
+            const fallbackSelectors = [
+              'article a[href*="projects/"]',
+              '.post a[href*="projects/"]', 
+              '.entry a[href*="projects/"]',
+              '.project a[href*="projects/"]',
+              '.content a[href*="projects/"]',
+              '.main a[href*="projects/"]',
+              'a[href*="projects/"]'
+            ];
+            
+            for (const selector of fallbackSelectors) {
+              if (pageProjectUrls.length > 0) break; // Stop if we found some
               
-              if (href && text.length > 0) {
-                const fullUrl = new URL(href, CONFIG.baseUrl).href;
-                if (!allProjectUrls.includes(fullUrl)) {
-                  pageProjectUrls.push(fullUrl);
-                  allProjectUrls.push(fullUrl);
-                  log.debug(`Fallback found: ${text} - ${fullUrl}`);
+              log.debug(`Trying fallback selector: ${selector}`);
+              $(selector).each((i, el) => {
+                const href = $(el).attr('href');
+                const text = $(el).text().trim();
+                
+                // Be more strict about what constitutes a valid project link
+                if (href && text.length > 5 && href.includes('/projects/') && !href.includes('#')) {
+                  const fullUrl = new URL(href, CONFIG.baseUrl).href;
+                  if (!allProjectUrls.includes(fullUrl)) {
+                    pageProjectUrls.push(fullUrl);
+                    allProjectUrls.push(fullUrl);
+                    log.debug(`Fallback (${selector}) found: "${text}" - ${fullUrl}`);
+                  }
                 }
+              });
+              
+              if (pageProjectUrls.length > 0) {
+                log.info(`Fallback selector "${selector}" found ${pageProjectUrls.length} projects on page ${currentPage}`);
+                break;
               }
-            });
+            }
+            
+            // If still no projects found, this might be an empty page or error page
+            if (pageProjectUrls.length === 0) {
+              log.warn(`All fallback selectors failed for page ${currentPage} - this may be an empty or error page`);
+            }
           }
           
           log.info(`Found ${pageProjectUrls.length} projects on page ${currentPage}`);
