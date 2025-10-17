@@ -806,10 +806,13 @@ class MakerspaceScraper {
         const project = await this.scrapeProject(url);
         
         if (project) {
-          // Apply tag filtering BEFORE removing excluded tags for display
-          if (this.matchesTagFilter(project)) {
+          const originalTags = Array.isArray(project.tags) ? [...project.tags] : [];
+
+          // Apply tag filtering against untouched tag list, then strip display-only tags
+          if (this.matchesTagFilter({ ...project, tags: originalTags })) {
             // Now filter out excluded tags for display only
             project.tags = this.filterTags(project.tags);
+            project.originalTags = originalTags;
             
             this.projects.push(project);
             log.debug(`✓ Project "${project.title}" matches tag filter`);
