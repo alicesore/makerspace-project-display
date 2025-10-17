@@ -24,7 +24,7 @@ const CONFIG = {
   },
     // Tag filtering configuration
   tagFilter: {
-    enabled: false, // Temporarily disabled to debug CI issues
+    enabled: true, // Temporarily disabled to debug CI issues
     mode: 'any', // 'any' = at least one tag, 'all' = all tags required
     requiredTags: ['makerspace'] // Tags that must be present
   },
