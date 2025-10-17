@@ -26,7 +26,7 @@ const CONFIG = {
   tagFilter: {
     enabled: true, // Temporarily disabled to debug CI issues
     mode: 'any', // 'any' = at least one tag, 'all' = all tags required
-    requiredTags: ['makerspace'] // Tags that must be present
+    requiredTags: ['fablab'] // Tags that must be present
   },
   // Tags to exclude from being saved and displayed (case-insensitive)
   excludedTags: ['makerspace', 'fablab', 'fab lab', 'williams', 'college']
